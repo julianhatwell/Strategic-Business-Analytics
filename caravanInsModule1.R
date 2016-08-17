@@ -82,7 +82,7 @@ costTrain <- double(length(pred.factor))
 costTest <- double(length(pred.factor))
 
 fp_cost <- 1
-fn_cost <- 2
+fn_cost <- 15
 refThreshold <- 0.8
 
 for (i in seq_along(pred.factor)) {
@@ -132,6 +132,13 @@ xyplot(tpr~fpr, groups = dataset
 g <- ggplot(data = allMetrics[allMetrics$dataset == "test",]
             , aes(x = fpr, y = tpr, colour = cost)) +
   theme_bw() +
-  myGgTheme 
-g + geom_line() +
-  myGgColourGradient
+  myGgTheme +
+  geom_abline(slope = 1, intercept = 0
+              , colour = myPal[4]
+              , size = 2, linetype = "dotted")
+g + geom_line(size = 3) + 
+  geom_text(x = 0.75, y = 0.25, colour = myPalDark[6]
+            , label = paste("false negative cost ="
+                            , fn_cost)
+  ) +
+  myGgHeatGradient

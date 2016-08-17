@@ -1,0 +1,403 @@
+A Short Demo of Predictive Analytics
+====================================
+author: Julian Hatwell
+date: `r format(Sys.time(), "%b %Y")`
+autosize: true
+font-import: http://fonts.googleapis.com/css?family=Ubuntu
+font-family: 'Ubuntu'
+
+```{r prologue, include=FALSE}
+source("sba_loadLibraries.R")
+
+knitr::opts_chunk$set(warning = FALSE
+                      , message = FALSE
+                      , echo = FALSE
+                      )
+
+knitr::opts_template$set(
+  fig.wideX = list(fig.height = 4.5, fig.width = 14, fig.align='center')
+  , fig.wide = list(fig.height = 6, fig.width = 14, fig.align='center')
+  , fig.left = list(fig.height = 6, fig.width = 6, fig.align='left')
+)
+
+par(mar = c(4,3,3,1))
+```
+
+```{r data_setup}
+fileLoc <- "caravanIns\\"
+trainFile <- "ticdata2000.txt"
+testFile <- "ticeval2000.txt"
+testClassesFile <- "tictgts2000.txt"
+
+train <- read.table(paste0(fileLoc, trainFile))
+test <- read.table(paste0(fileLoc, testFile))
+testClasses <- read.table(paste0(fileLoc, testClassesFile))
+
+train.plotting <- train
+train.plotting$purchased <- factor(train.plotting$V86
+                                   , labels = c("No", "Yes"))
+test.plotting <- test
+test.plotting$purchased <- factor(testClasses$V1
+                                  , labels = c("No", "Yes"))
+```
+
+Introduction
+============
+
+This short case study using data from a Caravan Owners Insurance Policy CRM database will demonstrate how data science can be used to add value and increase ROI for the Insurance Sales business.
+
+Challenge 1: Proof of Concept
+===========
+
+As a proof of concept, we'll go for a quick win.  
+  
+Conversion rate is considered low in the caravan insurance policy sales dept. We spend a long time chasing leads that don't go anywhere. How can we improve our conversion?
+
+```{r conversion_rate_fig,  opts.label='fig.wideX'}
+g <- ggplot(aes(x = "Purchased\nInsurance"
+                , fill = purchased)
+            , data = train.plotting) +
+  labs(x = ""
+  , y = "number of customers"
+  , title = "All leads by Purchased Yes or No") + scale_x_discrete(breaks=NULL)
+
+g <- g + geom_bar(position = "stack") +
+  myGgFillScale
+
+g <- g + coord_flip() +
+  theme_bw() + myGgTheme
+
+g
+```
+
+Solution: Predictive Analytics
+==========
+We can use prediction models to rate the likelihood that each lead will convert based on all the data we keep. We then prioritise the more likely leads. With such a large proportion of poor leads, the risk of rejecting good leads is low.
+
+```{r demo_model}
+fit1 <- glm(V86~., data = train, family = binomial)
+pred1 <- predict(fit1, type = "response")
+
+pred1.plotting <- data.frame(prob_purchase = sort(pred1)
+                             , will_purchase = factor(sort(pred1) > 0.25
+                                                      , labels = c("very unlikely"
+                                                                 , "more likely"))
+                             , count = 1:length(pred1))
+```
+
+```{r demo_model_fig, opts.label='fig.wideX'}
+h <- ggplot(aes(x = count
+                , y = prob_purchase
+                , colour = will_purchase)
+            , data = pred1.plotting)
+h <- h + geom_point(size = 2)
+h <- h + myGgColourScale
+h <- h + labs(y = "Predicted\nProbability\nof Purchase"
+              , x = "leads, sorted by priority"
+              , title = "Predicted Probability of lead conversion")
+h <- h + theme_bw()
+h
+```
+
+For this PoC, a relatively simple technique, logistic regression, is used to predict the probability of a purchase. 
+
+Benchmarking
+============
+
+Once the data is prepared, the model described takes seconds to produce. Is it any good at predicting?  
+
+To ascertain this, it must be tested on new data. For this simulation, a set of the CRM records have been kept aside so the model can be run on previously unseen data.
+
+```{r preds_new_data}
+labelPreds <- function(p) {
+  factor(p
+         , labels = if (sum(p * 1) == 0) {
+           "No" } else {
+             if (sum(p * 1) == length(p)) {
+               "Yes" 
+             } else {
+               c("No", "Yes")
+             }
+           }
+  )
+}
+
+pred2 <- predict(fit1, type = "response", newdata = test)
+
+pred.factor <- 0.5
+prediction <- labelPreds(pred2 > pred.factor)
+
+testConfmat <- with(test.plotting, table(prediction, purchased))
+testMetrics <- createMetrics(testConfmat)
+
+cat("Confusion Matrix of Predicted vs Actual Purchase on new data")
+testConfmat
+```
+
+Don't be put off
+================
+
+On the surface the previous results were terrible. However, the low existing conversion rate is causing a very well understood issue, the "class imbalance problem." With such a high proportion of actual No purchases, our model has a strong tendency to predict a No for nearly every case.
+
+This is easily addressed by reducing the decision threshold, giving the model an instruction to predict Yes at a much lower probability.
+
+What should this threshold be? Again we can use data science techniques to compute the best threshold from our specific data.
+
+ROC Curve
+=========
+left: 60%
+```{r roc_curve, cache=TRUE}
+pred.factor <- rev(seq(0.001, 10, 0.001))
+tpr <- double(length(pred.factor))
+fpr <- double(length(pred.factor))
+cost <- double(length(pred.factor))
+
+costFunction <- function(m, cost_of_fp, cost_of_fn) {
+    m$nfn * cost_of_fn + m$nfp * cost_of_fp
+}
+
+fp_cost <- 1
+fn_cost <- 15
+
+for (i in seq_along(pred.factor)) {
+  predTest <- labelPreds(pred2 > pred.factor[i])
+
+  testConfmat <- with(test.plotting, table(predTest, purchased))
+  testMetrics <- createMetrics(testConfmat)
+  tpr[i] <- testMetrics$sensitivity
+  fpr[i] <- testMetrics$fpr
+  cost[i] <- costFunction(testMetrics, fp_cost, fn_cost)
+}
+
+testMetrics <- data.frame(tpr, fpr, cost)
+lowestCost <-  testMetrics[which.min(testMetrics$cost),]
+bestPredFactor <- pred.factor[as.numeric(rownames(lowestCost))]
+```
+
+```{r roc_curve_fig, opts.label='fig.left'}
+ro <- ggplot(data = testMetrics
+            , aes(x = fpr
+                  , y = tpr
+                  , colour = cost)) +
+  labs(title = "ROC curve for Demo Model"
+       , x = "False Positive Rate"
+       , y = "True Positive Rate") +
+  theme_bw() +
+  myGgTheme
+
+# reference lines
+ro <- ro + geom_abline(slope = 1, intercept = 0
+              , colour = myPal[4]
+              , size = 2, linetype = "dotted") +
+geom_vline(xintercept = lowestCost$fpr
+              , linetype = "dashed"
+              , colour = myPal[8]) +
+geom_hline(yintercept = lowestCost$tpr
+              , linetype = "dashed"
+              , colour = myPal[8]) + 
+geom_text(x = 0.75
+            , y = 0.25
+            , colour = myPalDark[6]
+            , label = paste("false negative cost ="
+                            , fn_cost
+                            , "\nfalse positive cost ="
+                            , fp_cost
+                            , "\nlowest cost thresh. ="
+                            , bestPredFactor)
+  )
+
+# data line
+ro <- ro + geom_step(size = 3) +
+  myGgHeatGradient
+
+ro
+```
+
+<small>We assess the model at hundreds of possible values of the threshold and the true predictions are then plotted against the errors.
+
+-------
+
+We can also apply a cost function to the type of error because we know a false negative (a lost sale) is vastly more costly that a false positive (chasing a low quality lead).
+
+The best cost-based balance of true positive rate and false positive rate can be decided from on this ROC curve.</small>
+
+Updating our results
+====================
+
+```{r new_confmat}
+prediction <- labelPreds(pred2 > bestPredFactor)
+
+testConfmat <- with(test.plotting, table(prediction, purchased))
+testMetrics <- createMetrics(testConfmat)
+
+cat("Updated Confusion Matrix of Predicted vs Actual Purchase on new data")
+testConfmat
+```
+
+<small>Following the predictions of this new model, we would immediately move `r testMetrics$ntn` + `r testMetrics$nfn` = `r testMetrics$ntn + testMetrics$nfn` to the lowest priority. We would be losing `r testMetrics$nfn` potential sales but our attention would be on only `r testMetrics$nfp` + `r testMetrics$ntp` = `r testMetrics$nfp + testMetrics$ntp` leads, giving a conversion rate of `r round(testMetrics$ntp/(testMetrics$nfp + testMetrics$ntp),4) * 100`% for the `r testMetrics$ntp` actual sales. That's much more time to nurture and convert further incoming leads.</small>
+
+<small>Of course, we can't be satisfied with these results. So, what next?</small>
+
+Challenge 2: Boosting Sales
+===========
+
+The previous slides are the results of just a few short hours work, using the crudest methods for a quick win.  
+
+The demo gave us a minimum expectation of the benefits we could achieve.
+
+There are far more sensitive prediction methods we could try. There are also methods for determining what are the strongest influencing factors in a customer decision to buy. The latter is what we'll take a look at next.
+
+Solution: Feature Selection
+========
+
+The CRM data used in the first demo has 85 fields for each customer. It's very rich information but somewhat overwhelming to analysise them one by one.
+
+Feature selection can automate and compress the search for the most influential variables.
+
+For simplicity we will stick with the logistic regression method and add to it another method to discover the most important features that drive the predictions.
+
+The Lasso is a method that adds a penalty for each variable included in our logistic regression model.
+
+Lasso Regression
+================
+
+```{r lasso_model}
+x <- model.matrix(V86~.
+                  , data = train
+                  , family = "binomial")
+y <- train$V86
+
+fit.lasso <- glmnet(x, y
+                    , alpha = 1
+                    , family = "binomial")
+```
+
+```{r lasso_model_fig, opts.label='fig.wide'}
+plot(fit.lasso, xvar = "lambda", col = myPalContrasts)
+```
+
+This chart shows the effect of increasing Lambda. The bigger Lambda gets, the more the variables are "squeezed"  by the penalty and the smaller ones are excluded altogether.
+
+Benchmarking
+============
+
+The level of penalty which gives the best results is determined by another technique called cross-validation. In simple terms, we run the routine multiple times over subsets of the data and compare all the results for a better outcome.
+
+```{r lasso_cv}
+set.seed(2712)
+
+cv.fit.lasso <- cv.glmnet(x, y, alpha = 0, family = "binomial")
+
+bestlam.lasso <- cv.fit.lasso$lambda.min
+bestlam.lasso.1se <- cv.fit.lasso$lambda.1se
+```
+
+```{r lasso_cv_fig, opts.label='fig.wideX'}
+plot(cv.fit.lasso)
+text(labels = c("log(Best Lambda)"
+                , "log(Best Lambda + 1se)")
+     , x = log(c(bestlam.lasso
+                 , bestlam.lasso.1se))
+     , y = c(0.46
+             , 0.40))
+```
+
+Don't be confused
+=================
+
+The previous chart indicates that a pair of useful values are returned: The penalty (Lambda) that achieved the best results and a larger value which gave results within a standard error of the best. Statistically, it *might* perform just as well while giving a clearer answer to our business problem because it further reduces the number of variables in the model.
+
+In this case we keep the lower penalty that yielded the most accurate predictions.
+
+Updating our results
+====================
+
+Using the Lasso and techniques from the first part of the demo, we've also recalculated the threshold for prediction. This is used to create a new confusion matrix.
+
+```{r lasso_preds}
+x.val <- model.matrix(V86~.
+                      , data = cbind(test, V86 = testClasses$V1)
+                      , family = "binomial")
+y.val <- testClasses$V1
+pred.lasso <- predict(fit.lasso
+                      , s = bestlam.lasso
+                      , newx = x.val
+                      , type = "response"
+)
+
+for (i in seq_along(pred.factor)) {
+  predTest <- labelPreds(pred.lasso > pred.factor[i])
+
+  testConfmat <- with(test.plotting, table(predTest, purchased))
+  testMetrics <- createMetrics(testConfmat)
+  tpr[i] <- testMetrics$sensitivity
+  fpr[i] <- testMetrics$fpr
+  cost[i] <- costFunction(testMetrics, fp_cost, fn_cost)
+}
+
+testMetrics <- data.frame(tpr, fpr, cost)
+lowestCost <-  testMetrics[which.min(testMetrics$cost),]
+bestPredFactor <- pred.factor[as.numeric(rownames(lowestCost))]
+
+predictions <- ifelse(pred.lasso > bestPredFactor, "Yes", "No")
+confmat <- with(test.plotting, table(predictions, purchased))
+
+cat("Updated Confusion Matrix of Predicted vs Actual Purchase on new data")
+confmat
+```
+
+Clearly the predictions are less accurate. False Positive Rate is up, but this is OK. While we're working through twice as many leads, we're also finding finding a lot more sales.
+
+Factors Driving Sales
+=====================
+
+```{r coefficinets}
+cfs <- predict(fit.lasso, s=bestlam.lasso
+              , type = "coefficients")
+nonZerocfs <- which(cfs != 0)
+cat(dimnames(cfs)[[1]][nonZerocfs])
+```
+
+The real benefit of the Lasso is that instead of using all 85 fields in the data, the Lasso removed all but 2 (not including the Intercept).  
+  
+This gives the marketing team a distinct focus for their next campaign, and the product development team may have some very clear ideas about creating a new strategy.
+
+```{r minimal_model, eval=FALSE}
+# results are almost identical
+fit.min <- glm(V86~V47+V82
+               , data = train
+               , family = "binomial")
+
+pred.min <- predict(fit.min, type = "response", newdata = test)
+
+for (i in seq_along(pred.factor)) {
+  predTest <- labelPreds(pred.min > pred.factor[i])
+
+  testConfmat <- with(test.plotting, table(predTest, purchased))
+  testMetrics <- createMetrics(testConfmat)
+  tpr[i] <- testMetrics$sensitivity
+  fpr[i] <- testMetrics$fpr
+  cost[i] <- costFunction(testMetrics, fp_cost, fn_cost)
+}
+
+testMetrics <- data.frame(tpr, fpr, cost)
+lowestCost <-  testMetrics[which.min(testMetrics$cost),]
+bestPredFactor <- pred.factor[as.numeric(rownames(lowestCost))]
+
+predictions <- ifelse(pred.min > bestPredFactor, "Yes", "No")
+confmat <- with(test.plotting, table(predictions, purchased))
+
+cat("Updated Confusion Matrix of Predicted vs Actual Purchase on new data")
+confmat
+```
+
+Conclusion
+==========
+
+This demonstration has barely begun to scratch the surface of what is possible. Nevertheless, with just a few hours work we're able to produce new actionable insights from the available data:
+
+* A simple but operational prediction model which gives reasonable results
+
+* A clear indication of two key drivers of customer purchasing decisions
+
+This was achieved completely through Machine Learning without any time consuming manual labour (goodbye, spreadsheets!). It's repeatable at the click of a mouse and we can easily build on what we've learned.
