@@ -72,30 +72,28 @@ g
 
 Solution: Predictive Analytics
 ==========
-We can use prediction models to rate the likelihood that each lead will convert based on all the data we keep. We then prioritise the more likely leads. With such a large proportion of poor leads, the risk of rejecting good leads is low.
+We can use a model to predict the probability that each lead will convert, based on all the data we keep. We then prioritise the more probable leads. With such a large proportion of poor leads, the risk of rejecting good leads is low.
 
 ```{r demo_model}
 fit1 <- glm(V86~., data = train, family = binomial)
 pred1 <- predict(fit1, type = "response")
 
-pred1.plotting <- data.frame(prob_purchase = sort(pred1)
-                             , will_purchase = factor(sort(pred1) > 0.25
-                                                      , labels = c("very unlikely"
-                                                                 , "more likely"))
-                             , count = 1:length(pred1))
+pred1.plotting <- data.frame(purchased = train.plotting$purchased
+  , prob_purchase = pred1)
 ```
 
 ```{r demo_model_fig, opts.label='fig.wideX'}
-h <- ggplot(aes(x = count
+h <- ggplot(aes(x = purchased
                 , y = prob_purchase
-                , colour = will_purchase)
+                , fill = purchased
+                , colour = purchased)
             , data = pred1.plotting)
-h <- h + geom_point(size = 2)
-h <- h + myGgColourScale
-h <- h + labs(y = "Predicted\nProbability\nof Purchase"
-              , x = "leads, sorted by priority"
-              , title = "Predicted Probability of lead conversion")
-h <- h + theme_bw()
+h <- h + geom_violin(size = 1.5)
+h <- h + myGgFillScale + myGgColourScale
+h <- h + labs(y = "Predicted probability of a purchase"
+              , x = "Actually purchased"
+              , title = "Distribution of predicted probability from Logistic Regression model")
+h <- h + theme_bw() + myGgTheme + coord_flip()
 h
 ```
 
@@ -104,7 +102,7 @@ For this PoC, a relatively simple technique, logistic regression, is used to pre
 Benchmarking
 ============
 
-Once the data is prepared, the model described takes seconds to produce. Is it any good at predicting?  
+Once the data is prepared, the model described takes seconds to produce but is it any good at predicting?  
 
 To ascertain this, it must be tested on new data. For this simulation, a set of the CRM records have been kept aside so the model can be run on previously unseen data.
 
@@ -137,17 +135,17 @@ testConfmat
 Don't be put off
 ================
 
-On the surface the previous results were terrible. However, the low existing conversion rate is causing a very well understood issue, the "class imbalance problem." With such a high proportion of actual No purchases, our model has a strong tendency to predict a No for nearly every case.
+On the surface the previous results were terrible. However, the low conversion rate we started with is causing a very well understood issue called the "class imbalance problem." With such a high proportion of actual No purchases, our model has a strong tendency to predict a No for nearly every case.
 
-This is easily addressed by reducing the decision threshold, giving the model an instruction to predict Yes at a much lower probability.
+This is easily addressed by reducing the decision threshold. This means we give the model an instruction to predict Yes at a much lower probability.
 
-What should this threshold be? Again we can use data science techniques to compute the best threshold from our specific data.
+What should this threshold be? Again we can use data science techniques to compute the best threshold directly from our data.
 
 ROC Curve
 =========
 left: 60%
 ```{r roc_curve, cache=TRUE}
-pred.factor <- rev(seq(0.001, 10, 0.001))
+pred.factor <- rev(seq(0.001, 1, 0.001))
 tpr <- double(length(pred.factor))
 fpr <- double(length(pred.factor))
 cost <- double(length(pred.factor))
@@ -191,10 +189,14 @@ ro <- ro + geom_abline(slope = 1, intercept = 0
               , size = 2, linetype = "dotted") +
 geom_vline(xintercept = lowestCost$fpr
               , linetype = "dashed"
-              , colour = myPal[8]) +
+              , colour = myPal[8]
+              , size = 1
+              , alpha = 0.75) +
 geom_hline(yintercept = lowestCost$tpr
               , linetype = "dashed"
-              , colour = myPal[8]) + 
+              , colour = myPal[8]
+              , size = 1
+              , alpha = 0.75) + 
 geom_text(x = 0.75
             , y = 0.25
             , colour = myPalDark[6]
@@ -213,13 +215,13 @@ ro <- ro + geom_step(size = 3) +
 ro
 ```
 
-<small>We assess the model at hundreds of possible values of the threshold and the true predictions are then plotted against the errors.
+<small>We assess the model at thousands of possible values of the threshold and then plot the true predictions against the errors.
 
 -------
 
 We can also apply a cost function to the type of error because we know a false negative (a lost sale) is vastly more costly that a false positive (chasing a low quality lead).
 
-The best cost-based balance of true positive rate and false positive rate can be decided from on this ROC curve.</small>
+The best cost-based balance of true positive rate and false positive rate can be decided from this ROC curve.</small>
 
 Updating our results
 ====================
@@ -245,18 +247,18 @@ The previous slides are the results of just a few short hours work, using the cr
 
 The demo gave us a minimum expectation of the benefits we could achieve.
 
-There are far more sensitive prediction methods we could try. There are also methods for determining what are the strongest influencing factors in a customer decision to buy. The latter is what we'll take a look at next.
+There are far more sensitive prediction methods we could try. There are also methods for determining what are the strongest influencing factors in a customer decision to buy. The latter is what we'll look at next.
 
 Solution: Feature Selection
 ========
 
-The CRM data used in the first demo has 85 fields for each customer. It's very rich information but somewhat overwhelming to analysise them one by one.
+The CRM data used in the first demo has 85 fields for each customer. It's very rich information but somewhat overwhelming to analyse all these variables one by one.
 
 Feature selection can automate and compress the search for the most influential variables.
 
-For simplicity we will stick with the logistic regression method and add to it another method to discover the most important features that drive the predictions.
+For simplicity we'll stick with the logistic regression method and add to it another method to discover the most important features that drive the predictions.
 
-The Lasso is a method that adds a penalty for each variable included in our logistic regression model.
+The Lasso is a method that adds a penalty for each variable included in our logistic regression, favouring a simpler model.
 
 Lasso Regression
 ================
@@ -276,12 +278,12 @@ fit.lasso <- glmnet(x, y
 plot(fit.lasso, xvar = "lambda", col = myPalContrasts)
 ```
 
-This chart shows the effect of increasing Lambda. The bigger Lambda gets, the more the variables are "squeezed"  by the penalty and the smaller ones are excluded altogether.
+This chart shows the effect of increasing the penalty, Lambda, on the regression model. The bigger Lambda gets, the more the variables are "squeezed"  by the penalty and the smaller ones are excluded altogether.
 
 Benchmarking
 ============
 
-The level of penalty which gives the best results is determined by another technique called cross-validation. In simple terms, we run the routine multiple times over subsets of the data and compare all the results for a better outcome.
+The exact level of penalty which gives the best predictions is determined by another technique called cross-validation. In simple terms, we run the routine multiple times over subsets of the data and compare all the results for a better outcome.
 
 ```{r lasso_cv}
 set.seed(2712)
@@ -312,7 +314,7 @@ In this case we keep the lower penalty that yielded the most accurate prediction
 Updating our results
 ====================
 
-Using the Lasso and techniques from the first part of the demo, we've also recalculated the threshold for prediction. This is used to create a new confusion matrix.
+Using the Lasso and techniques from the first part of the demo, we've also recalculated the threshold for a Yes prediction. This is used to create a new confusion matrix.
 
 ```{r lasso_preds}
 x.val <- model.matrix(V86~.
@@ -355,10 +357,10 @@ Factors Driving Sales
 cfs <- predict(fit.lasso, s=bestlam.lasso
               , type = "coefficients")
 nonZerocfs <- which(cfs != 0)
-cat(dimnames(cfs)[[1]][nonZerocfs])
+cat("The variables used in the model are\n", dimnames(cfs)[[1]][nonZerocfs])
 ```
 
-The real benefit of the Lasso is that instead of using all 85 fields in the data, the Lasso removed all but 2 (not including the Intercept).  
+The real benefit of the Lasso is that instead of using all 85 fields from the data, the model requires only 2 (not including the Intercept). It still gives useful predictions but it's also much easier to interpret and explain.  
   
 This gives the marketing team a distinct focus for their next campaign, and the product development team may have some very clear ideas about creating a new strategy.
 
@@ -400,4 +402,4 @@ This demonstration has barely begun to scratch the surface of what is possible. 
 
 * A clear indication of two key drivers of customer purchasing decisions
 
-This was achieved completely through Machine Learning without any time consuming manual labour (goodbye, spreadsheets!). It's repeatable at the click of a mouse and we can easily build on what we've learned.
+This was achieved completely through Machine Learning without any time consuming manual labour (goodbye, spreadsheets!). It's repeatable at the click of a mouse and we can easily build on what we've discovered.
