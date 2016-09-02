@@ -19,6 +19,9 @@ library(cluster)
 library(forecast)
 library(lme4)
 library(gam)
+library(mclust)
+library(e1071)
+library(randomForest)
 source("C:\\Dev\\Study\\R\\Utilities\\Utilities.R")
 # data simul
 set.seed(2016)
@@ -290,8 +293,7 @@ vif(fit.7) # x5 and x7 are colinear, x4 and x6 moderately so
 # e.g. take the geo.mean
 z1 <- prcomp(xs[, c("x4", "x6")])
 z2 <- prcomp(xs[, c("x5", "x7")])
-z3 <- mapply(function(a, b) {1/mean(1/a + 1/b)}, x5, x7)
-xs <- cbind(xs, z1 = z1$x[, 1], z2 = z2$x[, 1], z3)
+xs <- cbind(xs, z1 = z1$x[, 1], z2 = z2$x[, 1])
 # the prcomp is very slightly better than the geo mean for z2
 fit.z <- lm(y~fx0 + z1 + z2, data = xs)
 
@@ -895,3 +897,574 @@ parallelplot(xs.plsm.boot
              , varnames=attr(xs.plsm.boot$t
                              , "path")[1:7]
              , main="Path coefficients in 1000 PLS bootstrap iterations (N=1000)")
+
+# clustering
+# quick check function
+xs.allNumeric <- xs[,c(2:4, 6:12)]
+xs.allx <- xs[,c(2:4, 6:9)]
+xs.allnoy <- xs[,c(2:4, 6:9, 11:12)]
+
+xs.allNumeric.scale <- scale(xs.allNumeric)
+xs.allx.scale <- scale(xs.allx)
+xs.allnoy.scale <- scale(xs.noy)
+
+clus.check <- function(data, groups) {
+  aggregate(data, list(groups), function(x) mean(as.numeric(x)))
+}
+clus.check(xs.allx, xs$x3)
+clus.check(xs.allNumeric, xs$fx0)
+
+# hclust
+xs.allNumeric.dist <- dist(xs.allNumeric.scale)
+xs.allx.dist <- dist(xs.allx.scale)
+xs.allnoy.dist <- dist(xs.allnoy.scale)
+
+xs.allNumeric.hclust <- hclust(xs.allNumeric.dist, method="complete")
+xs.allx.hclust <- hclust(xs.allx.dist, method="complete")
+xs.allnoy.hclust <- hclust(xs.allnoy.dist, method="complete")
+
+plot(xs.allNumeric.hclust)
+plot(xs.allx.hclust)
+plot(xs.allnoy.hclust)
+
+# plot a leaf node. should be similar
+plot(cut(as.dendrogram(xs.allx.hclust), h=2)$lower[[2]])
+xs[c(831, 1000, 43, 579, 821),]
+plot(cut(as.dendrogram(xs.allNumeric.hclust), h=2)$lower[[2]])
+xs[c(154, 237, 82, 317, 179, 470),]
+plot(cut(as.dendrogram(xs.allnoy.hclust), h=3)$lower[[2]])
+xs[c(825, 762, 481, 678),]
+
+cor(cophenetic(xs.allx.hclust), xs.allx.dist)
+cor(cophenetic(xs.allNumeric.hclust), xs.allNumeric.dist)
+cor(cophenetic(xs.allnoy.hclust), xs.allnoy.dist)
+
+plot(xs.allx.hclust)
+rect.hclust(xs.allx.hclust, k=4, border="red")
+rect.hclust(xs.allx.hclust, k=3, border="red")
+rect.hclust(xs.allx.hclust, k=2, border="red")
+
+plot(xs.allNumeric.hclust)
+rect.hclust(xs.allNumeric.hclust, k=4, border="red")
+rect.hclust(xs.allNumeric.hclust, k=3, border="red")
+rect.hclust(xs.allNumeric.hclust, k=2, border="red")
+
+plot(xs.allnoy.hclust)
+rect.hclust(xs.allnoy.hclust, k=4, border="red")
+rect.hclust(xs.allnoy.hclust, k=3, border="red")
+rect.hclust(xs.allnoy.hclust, k=2, border="red")
+
+xs.allx.members.4 <- cutree(xs.allx.hclust, k = 4)
+xs.allx.members.3 <- cutree(xs.allx.hclust, k = 3)
+xs.allx.members.2 <- cutree(xs.allx.hclust, k = 2)
+
+xs.allNumeric.members.4 <- cutree(xs.allNumeric.hclust, k = 4)
+xs.allNumeric.members.3 <- cutree(xs.allNumeric.hclust, k = 3)
+xs.allNumeric.members.2 <- cutree(xs.allNumeric.hclust, k = 2)
+
+xs.allnoy.members.4 <- cutree(xs.allnoy.hclust, k = 4)
+xs.allnoy.members.3 <- cutree(xs.allnoy.hclust, k = 3)
+xs.allnoy.members.2 <- cutree(xs.allnoy.hclust, k = 2)
+
+table(xs$x3, xs.allx.members.4)
+table(xs$x3, xs.allNumeric.members.4)
+table(xs$x3, xs.allnoy.members.4)
+
+table(xs$fx0, xs.allx.members.2)
+table(xs$fx0, xs.allNumeric.members.2)
+table(xs$fx0, xs.allnoy.members.2)
+
+mapClass(xs.allx.members.4, xs$x3)$aTOb
+mapClass(xs.allNumeric.members.4, xs$x3)$aTOb
+mapClass(xs.allnoy.members.4, xs$x3)$aTOb
+mapClass(xs.allx.members.2, xs$fx0)$aTOb
+mapClass(xs.allNumeric.members.2, xs$fx0)$aTOb
+mapClass(xs.allnoy.members.2, xs$fx0)$aTOb
+# this has done badly
+
+clus.check(xs, xs.allx.members.4)
+clus.check(xs, xs.allx.members.3)
+clus.check(xs, xs.allx.members.2)
+
+clus.check(xs, xs.allNumeric.members.4)
+clus.check(xs, xs.allNumeric.members.3)
+clus.check(xs, xs.allNumeric.members.2)
+
+clus.check(xs, xs.allnoy.members.4)
+clus.check(xs, xs.allnoy.members.3)
+clus.check(xs, xs.allnoy.members.2)
+
+xyplot(y~x0, data = xs, groups = xs.allx.members.2)
+xyplot(y~x1 | fx0 , data = xs, groups = xs.allx.members.2)
+xyplot(y~x2 | fx0, data = xs, groups = xs.allx.members.2)
+xyplot(y~x4 | fx0, data = xs, groups = xs.allx.members.2)
+xyplot(y~x5 | fx0, data = xs, groups = xs.allx.members.2)
+xyplot(y~x6 | fx0, data = xs, groups = xs.allx.members.2)
+xyplot(y~x7 | fx0, data = xs, groups = xs.allx.members.2)
+
+xyplot(y~x1, data = xs, groups = xs.allx.members.4)
+xyplot(y~x1 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x1 | fx0, data = xs, groups = xs.allx.members.4)
+xyplot(y~x2, data = xs, groups = xs.allx.members.4)
+xyplot(y~x2 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x2 | fx0, data = xs, groups = xs.allx.members.4)
+xyplot(y~x4, data = xs, groups = xs.allx.members.4)
+xyplot(y~x4 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x4 | fx0, data = xs, groups = xs.allx.members.4)
+xyplot(y~x5, data = xs, groups = xs.allx.members.4)
+xyplot(y~x5 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x5 | fx0, data = xs, groups = xs.allx.members.4)
+xyplot(y~x6, data = xs, groups = xs.allx.members.4)
+xyplot(y~x6 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x6 | fx0, data = xs, groups = xs.allx.members.4)
+xyplot(y~x7, data = xs, groups = xs.allx.members.4)
+xyplot(y~x7 | x3, data = xs, groups = xs.allx.members.4)
+xyplot(y~x7 | fx0, data = xs, groups = xs.allx.members.4)
+
+bwplot(y~factor(xs.allx.members.4) | x3, data = xs)
+bwplot(x4~x3 | xs.allx.members.4, data = xs)
+bwplot(x5~x3 | xs.allx.members.4, data = xs)
+bwplot(y~factor(xs.allx.members.2), data = xs)
+bwplot(y~factor(xs.allx.members.2) | fx0, data = xs)
+
+clusplot(xs.allx.scale, xs.allx.members.2
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allNumeric.scale, xs.allNumeric.members.2
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allnoy.scale, xs.allnoy.members.2
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+
+clusplot(xs.allx.scale, xs.allx.members.4
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allNumeric.scale, xs.allNumeric.members.4
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allnoy.scale, xs.allnoy.members.4
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+
+# kmeans
+xs.allx.km2 <- kmeans(xs.allx.scale, centers = 2)
+xs.allx.km4 <- kmeans(xs.allx.scale, centers = 4)
+xs.allNumeric.km2 <- kmeans(xs.allNumeric.scale, centers = 2)
+xs.allNumeric.km4 <- kmeans(xs.allNumeric.scale, centers = 4)
+xs.allnoy.km2 <- kmeans(xs.allnoy.scale, centers = 2)
+xs.allnoy.km4 <- kmeans(xs.allnoy.scale, centers = 4)
+
+clus.check(xs, xs.allx.km2$cluster)
+clus.check(xs, xs.allx.km4$cluster)
+clus.check(xs, xs.allNumeric.km2$cluster)
+clus.check(xs, xs.allNumeric.km4$cluster)
+clus.check(xs, xs.allnoy.km2$cluster)
+clus.check(xs, xs.allnoy.km4$cluster)
+
+bwplot(y~factor(xs.allx.km2$cluster), data = xs)
+bwplot(y~factor(xs.allx.km2$cluster) | fx0, data = xs)
+
+bwplot(x4~factor(xs.allx.km4$cluster), data = xs)
+bwplot(x4~factor(xs.allx.km4$cluster) | x3, data = xs)
+bwplot(x5~factor(xs.allx.km4$cluster), data = xs)
+bwplot(x5~factor(xs.allx.km4$cluster) | x3, data = xs)
+
+clusplot(xs.allx.scale, xs.allx.km2$cluster
+         , color=TRUE
+         , shade=FALSE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allNumeric.scale, xs.allx.km2$cluster
+         , color=TRUE
+         , shade=FALSE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allnoy.scale, xs.allx.km2$cluster
+         , color=TRUE
+         , shade=FALSE
+         , labels=4
+         , main="K-means cluster plot")
+
+clusplot(xs.allx.scale, xs.allx.km4$cluster
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allNumeric.scale, xs.allx.km4$cluster
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+clusplot(xs.allnoy.scale, xs.allx.km4$cluster
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="K-means cluster plot")
+
+mapClass(xs.allx.km4$cluster, xs$x3)$aTOb
+mapClass(xs.allNumeric.km4$cluster, xs$x3)$aTOb
+mapClass(xs.allnoy.km4$cluster, xs$x3)$aTOb
+mapClass(xs.allx.km2$cluster, xs$fx0)$aTOb
+mapClass(xs.allNumeric.km2$cluster, xs$fx0)$aTOb
+mapClass(xs.allnoy.km2$cluster, xs$fx0)$aTOb
+
+adjustedRandIndex(xs.allx.km4$cluster, xs$x3)
+adjustedRandIndex(xs.allNumeric.km4$cluster, xs$x3)
+adjustedRandIndex(xs.allnoy.km4$cluster, xs$x3)
+adjustedRandIndex(xs.allx.km2$cluster, xs$fx0)
+adjustedRandIndex(xs.allNumeric.km2$cluster, xs$fx0)
+adjustedRandIndex(xs.allnoy.km2$cluster, xs$fx0)
+# done badly here too
+
+# mclust - model based clustering, using normal distribs
+xs.allx.mc <- Mclust(xs.allx.scale)
+summary(xs.allx.mc)
+# plot(xs.allx.mc)
+xs.allx.mc4 <- Mclust(xs.allx.scale, G = 4)
+summary(xs.allx.mc4)
+# plot(xs.allx.mc4)
+xs.allx.mc2 <- Mclust(xs.allx.scale, G = 2)
+summary(xs.allx.mc2)
+# plot(xs.allx.mc2)
+
+xs.allNumeric.mc <- Mclust(xs.allNumeric.scale)
+summary(xs.allNumeric.mc)
+# plot(xs.allNumeric.mc)
+xs.allNumeric.mc4 <- Mclust(xs.allNumeric.scale, G = 4)
+summary(xs.allNumeric.mc4)
+# plot(xs.allNumeric.mc4)
+xs.allNumeric.mc2 <- Mclust(xs.allNumeric.scale, G = 2)
+summary(xs.allNumeric.mc2)
+# plot(xs.allNumeric.mc2)
+
+xs.allnoy.mc <- Mclust(xs.allnoy.scale)
+summary(xs.allnoy.mc)
+# plot(xs.allnoy.mc)
+xs.allnoy.mc4 <- Mclust(xs.allnoy.scale, G = 4)
+summary(xs.allnoy.mc4)
+# plot(xs.allnoy.mc4)
+xs.allnoy.mc2 <- Mclust(xs.allnoy.scale, G = 2)
+summary(xs.allnoy.mc2)
+# plot(xs.allnoy.mc2)
+
+clus.check(xs, xs.allNumeric.mc4$classification)
+clus.check(xs, xs.allNumeric.mc2$classification)
+clus.check(xs, xs.allnoy.mc4$classification)
+clus.check(xs, xs.allnoy.mc2$classification)
+
+BIC(xs.allx.mc, xs.allx.mc2, xs.allx.mc4)
+BIC(xs.allNumeric.mc, xs.allNumeric.mc2, xs.allNumeric.mc4)
+BIC(xs.allnoy.mc, xs.allnoy.mc2, xs.allnoy.mc4)
+
+# in the end all the x without the PCA and y was clearer
+BIC(xs.allx.mc4, xs.allNumeric.mc4, xs.allnoy.mc4)
+
+mapClass(xs.allx.mc4$classification, xs$x3)$aTOb
+mapClass(xs.allNumeric.mc4$classification, xs$x3)$aTOb
+mapClass(xs.allnoy.mc4$classification, xs$x3)$aTOb
+mapClass(xs.allx.mc2$classification, xs$fx0)$aTOb
+mapClass(xs.allNumeric.mc2$classification, xs$fx0)$aTOb
+mapClass(xs.allnoy.mc2$classification, xs$fx0)$aTOb
+
+adjustedRandIndex(xs.allx.mc4$classification, xs$x3)
+adjustedRandIndex(xs.allNumeric.mc4$classification, xs$x3)
+adjustedRandIndex(xs.allnoy.mc4$classification, xs$x3)
+adjustedRandIndex(xs.allx.mc2$classification, xs$fx0)
+adjustedRandIndex(xs.allNumeric.mc2$classification, xs$fx0)
+adjustedRandIndex(xs.allnoy.mc2$classification, xs$fx0)
+
+# polCA, clustering on hidden factors
+# use xs.cfa from above but create factors
+set.seed(2087)
+ratings.fac <- as.data.frame(lapply(ratings.only, factor))
+xs.cfa.fac <- as.data.frame(lapply(xs.cfa, factor))
+
+ratings.polca.fmla <- with(ratings.fac
+                    , cbind(perform
+                            ,leader
+                            , latest
+                            , fun
+                            , serious
+                            , bargain
+                            , value
+                            , trendy
+                            , rebuy)~1)
+ratings.polca.4 <- poLCA(ratings.polca.fmla
+                         , data = ratings.fac
+                         , nclass=4)
+ratings.polca.4$bic
+clus.check(ratings[,-10], ratings.polca.4$predclass)
+# this did really well
+table(ratings.polca.4$predclass, ratings$x3) 
+clusplot(ratings.only[, -1], ratings.polca.4$predclass
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="polCA cluster plot")
+
+xs.polca.fmla <- with(xs.cfa.fac
+                           , cbind(x0, x1, x2
+                                   , x4, x5
+                                   , x6, x7)~1)
+xs.polca.2 <- poLCA(xs.polca.fmla
+                         , data = xs.cfa.fac
+                         , nclass=2)
+xs.polca.4 <- poLCA(xs.polca.fmla
+                         , data = xs.cfa.fac
+                         , nclass=4)
+# model 2 is signif better
+xs.polca.2$bic
+xs.polca.4$bic
+clus.check(xs, xs.polca.2$predclass)
+clus.check(xs, xs.polca.4$predclass)
+clusplot(xs.allx, xs.polca.2$predclass
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="polCA cluster plot")
+clusplot(xs.allx, xs.polca.4$predclass
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="polCA cluster plot")
+
+mapClass(xs.polca.4$predclass, xs$x3)$aTOb
+adjustedRandIndex(xs.polca.4$predclass, xs$x3)
+mapClass(xs.polca.2$predclass, xs$fx0)$aTOb
+adjustedRandIndex(xs.polca.2$predclass, xs$fx0)
+
+# classification
+# naive bayes
+set.seed(70321)
+trn <- sample(n, n * 0.65)
+train <- xs[trn, ]
+test <- xs[-trn, ]
+
+xs.nb.model.4y <- naiveBayes(x3~y, data = train)
+xs.nb.model.4y # column 1 mean, column 2 st.dev
+
+xs.nb.model.4z <- naiveBayes(x3~z1+z2, data = train)
+xs.nb.model.4z # column 1 mean, column 2 st.dev
+
+xs.nb.model.4x <- naiveBayes(x3~x1+x2+x4+x5+x6+x7, data = train)
+xs.nb.model.4x # column 1 mean, column 2 st.dev
+
+xs.nb.model.2y <- naiveBayes(fx0~y, data = train)
+xs.nb.model.2y # column 1 mean, column 2 st.dev
+
+xs.nb.model.2z <- naiveBayes(fx0~z1+z2, data = train)
+xs.nb.model.2z # column 1 mean, column 2 st.dev
+
+xs.nb.model.2x <- naiveBayes(fx0~x1+x2+x4+x5+x6+x7, data = train)
+xs.nb.model.2x # column 1 mean, column 2 st.dev
+
+xs.nb.preds.4y <- predict(xs.nb.model.4y, newdata = test)
+xs.nb.preds.4z <- predict(xs.nb.model.4z, newdata = test)
+xs.nb.preds.4x <- predict(xs.nb.model.4x, newdata = test)
+
+xs.nb.preds.2y <- predict(xs.nb.model.2y, newdata = test)
+xs.nb.preds.2z <- predict(xs.nb.model.2z, newdata = test)
+xs.nb.preds.2x <- predict(xs.nb.model.2x, newdata = test)
+
+prop.table(table(xs.nb.preds.4y))
+prop.table(table(xs.nb.preds.4z))
+prop.table(table(xs.nb.preds.4x))
+
+prop.table(table(xs.nb.preds.2y))
+prop.table(table(xs.nb.preds.2z))
+prop.table(table(xs.nb.preds.2x))
+
+clusplot(xs.allNumeric[-trn, c("x1", "x2", "y")], xs.nb.preds.4y
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+clusplot(xs.allx[-trn, c("x4", "x6", "x5", "x7")], xs.nb.preds.4z
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+clusplot(xs.allx[-trn, ], xs.nb.preds.4x
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+
+mean(xs.nb.preds.4y == test$x3)
+adjustedRandIndex(xs.nb.preds.4y, test$x3)
+mean(xs.nb.preds.4z == test$x3)
+adjustedRandIndex(xs.nb.preds.4z, test$x3)
+mean(xs.nb.preds.4x == test$x3) # best
+adjustedRandIndex(xs.nb.preds.4x, test$x3)
+table(xs.nb.preds.4x, test$x3)
+
+clus.check(test, xs.nb.preds.4x)
+clus.check(test, test$x3)
+
+mean(xs.nb.preds.2y == test$fx0)
+mean(xs.nb.preds.2z == test$fx0)
+mean(xs.nb.preds.2x == test$fx0) # none better than chance
+
+# individual level odds (probability??) of membership
+head(predict(xs.nb.model.4x, newdata = test, type = "raw"))
+
+# ratings data, using scaled for numeric data
+ratings.train <- ratings.only[trn, ]
+ratings.test <- ratings.only[-trn, ]
+
+ratings.nb.model <- naiveBayes(x3~., data = ratings.train)
+ratings.nb.model # column 1 mean, column 2 st.dev
+
+ratings.nb.preds <- predict(ratings.nb.model, newdata = ratings.test)
+clusplot(ratings.scale[-trn, ], ratings.nb.preds
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+
+mean(ratings.nb.preds == ratings.test$x3) # only ok-lah!
+adjustedRandIndex(ratings.nb.preds, ratings.test$x3)
+table(ratings.nb.preds, ratings.test$x3)
+
+# individual level odds (proobability??) of membership
+head(predict(ratings.nb.model, newdata = ratings.test, type = "raw"))
+# compare
+clus.check(ratings.test, ratings.nb.preds)
+clus.check(ratings.test, ratings.test$x3)
+
+# randomforest
+set.seed(90210)
+xs.rf.4 <- randomForest(x3~.-fx0, data = train
+                        , ntree = 10000
+                        , importance = TRUE)
+xs.rf.2 <- randomForest(fx0~.-x0, data = train
+                        , ntree = 10000
+                        , importance = TRUE)
+# dealing with class imbalance
+xs.rf.2a <- randomForest(fx0~.-x0-y, data = train
+                        , ntree = 10000
+                        , importance = TRUE
+                        , sampsize=c(130, 130))
+ratings.rf <- randomForest(x3~., ratings.train
+                           , ntree = 10000
+                           , importance = TRUE)
+
+xs.rf.4
+xs.rf.2 # good work
+xs.rf.2a
+ratings.rf # good work
+
+xs.rf4.preds <- predict(xs.rf.4, newdata = test)
+xs.rf2.preds <- predict(xs.rf.2, newdata = test)
+xs.rf2a.preds <- predict(xs.rf.2a, newdata = test)
+ratings.rf.preds <- predict(ratings.rf, newdata = ratings.test)
+
+clusplot(test, xs.rf4.preds
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+
+clusplot(test, xs.rf2.preds
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+clusplot(test, xs.rf2a.preds
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+
+clusplot(ratings.test, ratings.rf.preds
+         , color=TRUE
+         , shade=TRUE
+         , labels=4
+         , main="NB cluster/classification plot")
+
+xs.rf2.preds.all <- predict(xs.rf.2, newdata = test, predict.all = TRUE)
+xs.rf2a.preds.all <- predict(xs.rf.2, newdata = test, predict.all = TRUE)
+xs.rf4.preds.all <- predict(xs.rf.4, newdata = test, predict.all = TRUE)
+xs.rf2.preds.all$individual[1:6, 1:5]
+xs.rf2a.preds.all$individual[1:6, 1:5]
+xs.rf4.preds.all$individual[1:6, 1:5]
+apply(xs.rf2.preds.all$individual[1:5, ], 1, table) / 10000
+apply(xs.rf2a.preds.all$individual[1:5, ], 1, table) / 10000
+apply(xs.rf4.preds.all$individual[1:5, ], 1, table) / 10000
+clus.check(xs, xs$fx0)
+clus.check(test, xs.rf2.preds)
+clus.check(test, xs.rf2a.preds)
+clus.check(xs, xs$x3)
+clus.check(test, xs.rf4.preds)
+mean(test$fx0 == xs.rf2.preds)
+mean(test$fx0 == xs.rf2a.preds)
+mean(test$x3 == xs.rf4.preds)
+adjustedRandIndex(test$fx0, xs.rf2.preds)
+adjustedRandIndex(test$fx0, xs.rf2a.preds)
+adjustedRandIndex(test$x3, xs.rf4.preds)
+table(test$fx0, xs.rf2.preds)
+table(test$fx0, xs.rf2a.preds)
+table(test$x3, xs.rf4.preds)
+
+# ratings data
+ratings.rf.preds.all <- predict(ratings.rf, newdata = ratings.test, predict.all = TRUE)
+ratings.rf.preds.all$individual[1:6, 1:5]
+apply(ratings.rf.preds.all$individual[1:5, ], 1, table) / 10000
+clus.check(ratings.only, ratings.only$x3)
+clus.check(ratings.test, ratings.rf.preds) # veryt good
+mean(ratings.test$x3 == ratings.rf.preds)
+adjustedRandIndex(ratings.test$x3, ratings.rf.preds)
+table(ratings.test$x3, ratings.rf.preds)
+
+importance(xs.rf.2)
+importance(xs.rf.2a)
+importance(xs.rf.4)
+importance(ratings.rf)
+
+varImpPlot(xs.rf.2)
+varImpPlot(xs.rf.2a)
+varImpPlot(xs.rf.4)
+varImpPlot(ratings.rf)
+
+heatmap.2(t(importance(xs.rf.2)
+            [ , 1:2])
+          , col=brewer.pal(9, "BuGn")
+          , dend="none"
+          , trace="none"
+          , key=FALSE
+          , margins=c(10, 10))
+heatmap.2(t(importance(xs.rf.2a)
+            [ , 1:2])
+          , col=brewer.pal(9, "BuGn")
+          , dend="none"
+          , trace="none"
+          , key=FALSE
+          , margins=c(10, 10))
+
+heatmap.2(t(importance(xs.rf.4)
+            [ , 1:4])
+          , col=brewer.pal(9, "BuGn")
+          , dend="none"
+          , trace="none"
+          , key=FALSE
+          , margins=c(10, 10))
+heatmap.2(t(importance(ratings.rf)
+            [ , 1:4])
+          , col=brewer.pal(9, "BuGn")
+          , dend="none"
+          , trace="none"
+          , key=FALSE
+          , margins=c(10, 10))
