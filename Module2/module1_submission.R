@@ -1,3 +1,4 @@
+library(sqldf)
 # --- PREPARING AND TRANSFORMING dt ----------------------
 # Copy customer dt into new dt frame
 new_dt_sub <- customers
@@ -47,3 +48,4 @@ aggregate(customers_sample[, 2:4], by = list(members5_sub), mean)
 
 compare <- c(which(customers_sample$customer_id == 260)
              , which(customers_sample$customer_id == 5920))
+members5_sub[compare]

@@ -1,3 +1,7 @@
+library(sqldf)
+library(lattice)
+source("C:\\Dev\\Study\\R\\R_Themes\\MarketingTheme.R")
+
 # run module1.R
 customers_2015 <- sqldf("SELECT customer_id,
                                MIN(days_since) AS 'recency',
@@ -16,9 +20,11 @@ customers_2015$segment[which(customers_2015$recency <= 365)] <- "active"
 customers_2015$segment[which(customers_2015$segment == "warm" & customers_2015$first_purchase <= 365*2)] <- "new warm"
 customers_2015$segment[which(customers_2015$segment == "warm" & customers_2015$amount < 100)] <- "warm low value"
 customers_2015$segment[which(customers_2015$segment == "warm" & customers_2015$amount >= 100)] <- "warm high value"
-customers_2015$segment[which(customers_2015$segment == "active" & customers_2015$first_purchase <= 365)] <- "new active"
+customers_2015$segment[which(customers_2015$segment == "active" & customers_2015$first_purchase <= 365 & customers_2015$amount < 100)] <- "new active low"
+customers_2015$segment[which(customers_2015$segment == "active" & customers_2015$first_purchase <= 365 & customers_2015$amount >= 100)] <- "new active high"
 customers_2015$segment[which(customers_2015$segment == "active" & customers_2015$amount < 100)] <- "active low value"
 customers_2015$segment[which(customers_2015$segment == "active" & customers_2015$amount >= 100)] <- "active high value"
+
 table(customers_2015$segment)
 aggregate(x = customers_2015[, 2:5], by = list(customers_2015$segment), mean)
 
@@ -32,17 +38,17 @@ customers_2015$segment <- factor(
                , "new warm"
                , "active high value"
                , "active low value"
-               , "new active")
+               , "new active high"
+               , "new active low")
   )
 
 table(customers_2015$segment)
 aggregate(x = customers_2015[, 2:5], by = list(customers_2015$segment), mean)
 
-
 # --- SEGMENTING A dt2BASE RETROSPECTIVELY ----------------
 # Compute recency, frequency, and average purchase amount
 # simulate how the data looked a year before
-customers_2014 = sqldf("SELECT customer_id,
+customers_2014 <- sqldf("SELECT customer_id,
                                MIN(days_since) - 365 AS 'recency',
                                MAX(days_since) - 365 AS 'first_purchase',
                                COUNT(*) AS 'frequency',
@@ -52,7 +58,7 @@ customers_2014 = sqldf("SELECT customer_id,
                         GROUP BY customer_id")
 
 # Complete segment solution using which, and exploiting previous test as input
-customers_2014$segment = "NA"
+customers_2014$segment <- "NA"
 customers_2014$segment[which(customers_2014$recency > 365*3)] <- "inactive"
 customers_2014$segment[which(customers_2014$recency <= 365*3 & customers_2014$recency > 365*2)] <- "cold"
 customers_2014$segment[which(customers_2014$recency <= 365*2 & customers_2014$recency > 365*1)] <- "warm"
@@ -60,7 +66,8 @@ customers_2014$segment[which(customers_2014$recency <= 365)] <- "active"
 customers_2014$segment[which(customers_2014$segment == "warm" & customers_2014$first_purchase <= 365*2)] <- "new warm"
 customers_2014$segment[which(customers_2014$segment == "warm" & customers_2014$amount < 100)] <- "warm low value"
 customers_2014$segment[which(customers_2014$segment == "warm" & customers_2014$amount >= 100)] <- "warm high value"
-customers_2014$segment[which(customers_2014$segment == "active" & customers_2014$first_purchase <= 365)] <- "new active"
+customers_2014$segment[which(customers_2014$segment == "active" & customers_2014$first_purchase <= 365 & customers_2014$amount < 100)] <- "new active low"
+customers_2014$segment[which(customers_2014$segment == "active" & customers_2014$first_purchase <= 365 & customers_2014$amount >= 100)] <- "new active high"
 customers_2014$segment[which(customers_2014$segment == "active" & customers_2014$amount < 100)] <- "active low value"
 customers_2014$segment[which(customers_2014$segment == "active" & customers_2014$amount >= 100)] <- "active high value"
 
@@ -74,7 +81,8 @@ customers_2014$segment <- factor(
                , "new warm"
                , "active high value"
                , "active low value"
-               , "new active")
+               , "new active high"
+               , "new active low")
   )
 
 # Show segmentation results
@@ -102,7 +110,7 @@ revenue_2015 <- sqldf("SELECT customer_id, SUM(purchase_amount) AS 'revenue_2015
 summary(revenue_2015)
 
 # Merge 2015 customers and 2015 revenue (correct)
-actual = merge(customers_2015, revenue_2015, all.x = TRUE)
+actual <- merge(customers_2015, revenue_2015, all.x = TRUE)
 actual$revenue_2015[is.na(actual$revenue_2015)] = 0
 
 # Show average revenue per customer and per segment
@@ -114,11 +122,13 @@ forward$revenue_2015[is.na(forward$revenue_2015)] = 0
 
 # Show average revenue per customer and per segment
 r <- aggregate(x = forward$revenue_2015, by = list(customers_2014$segment), mean)
-print(r)
+# Show average purchase per customer and per segment
+p <- aggregate(x = forward$amount, by = list(customers_2014$segment), mean)
 
 # Re-order and display results
-r = r[order(r$x, decreasing = TRUE), ]
-print(r)
+r <- r[order(r$x, decreasing = TRUE), ]
+p <- p[order(p$x, decreasing = TRUE), ]
+
 barplot(r$x, names.arg = r$Group.1)
 
 newActLow <- nrow(customers[customers_2015$segment == "new active" &
@@ -130,6 +140,7 @@ newActHigh <- nrow(customers[customers_2015$segment == "new active" &
 newActHighLY <- nrow(customers[customers_2014$segment == "new active" &
                  customers_2014$amount >= 100,])
 
-(1 - newActHigh/newActHighLY) * 100
+(newActHigh/newActHighLY - 1) * 100
 
 r
+p

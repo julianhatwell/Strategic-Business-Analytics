@@ -1,6 +1,9 @@
+library(sqldf)
+library(lattice)
+source("C:\\Dev\\Study\\R\\R_Themes\\MarketingTheme.R")
 # Practise using sqldf
 
-myTrendKey = list(columns = 2
+myTrendKey <- list(columns = 2
   , text = list(
   c("actuals", "smooth trend")
   , col = c(MyLatticeTheme$plot.line$col
@@ -31,22 +34,21 @@ myTrendPlot <- function(x, y, d) {
   )
 }
 
-
-dat = read.delim(file = 'Module2\\purchases.txt', header = FALSE, sep = '\t', dec = '.')
+dat <- read.delim(file = 'Module2\\purchases.txt', header = FALSE, sep = '\t', dec = '.')
 head(dat)
 summary(dat)
 
 # Add headers and interpret the last column as a date, extract year of purchase
-colnames(dat) = c('customer_id', 'purchase_amount', 'date_of_purchase')
-dat$date_of_purchase = as.Date(dat$date_of_purchase, "%Y-%m-%d")
-dat$year_of_purchase = as.numeric(format(dat$date_of_purchase, "%Y"))
+colnames(dat) <- c('customer_id', 'purchase_amount', 'date_of_purchase')
+dat$date_of_purchase <- as.Date(dat$date_of_purchase, "%Y-%m-%d")
+dat$year_of_purchase <- as.numeric(format(dat$date_of_purchase, "%Y"))
 
 # Display the dat set after transformation
 head(dat)
 summary(dat)
 
 # All in one
-sq = sqldf("SELECT year_of_purchase,
+sq <- sqldf("SELECT year_of_purchase,
            COUNT(year_of_purchase) AS 'counter',
            AVG(purchase_amount) AS 'avg_amount',
            SUM(purchase_amount) AS 'sum_amount'
